@@ -12,9 +12,9 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Abstract1155Factory.sol";
 
 contract Seeds1155 is Abstract1155Factory {
-    // TODO Merkle tree based whitelist
+    // TODO calculate discount rate according to the parameters required
     uint256 private constant duration = 7 days;
-    uint256 public immutable discountRate = 1;
+    uint256 public immutable discountRate = 100;
     uint256 public immutable startAt = block.timestamp;
     uint256 public immutable expiresAt = block.timestamp + duration;
 
@@ -143,7 +143,7 @@ contract Seeds1155 is Abstract1155Factory {
      */
     function getPrice(uint256 _index) public view returns (uint256) {
         require(
-            _index >= 1 && _index <= 3,
+            _index >= 0 && _index <= 2,
             "token id out of range or not buyable"
         );
 
