@@ -12,6 +12,12 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Abstract1155Factory.sol";
 
 contract Seeds1155 is Abstract1155Factory {
+    // TODO calculate discount rate according to the parameters required
+    uint256 private constant duration = 7 days;
+    uint256 public immutable discountRate = 100;
+    uint256 public immutable startAt = block.timestamp;
+    uint256 public immutable expiresAt = block.timestamp + duration;
+
     address public multisigWallet;
     address public OLDEUS_721;
     bool public paused = false;
@@ -58,19 +64,12 @@ contract Seeds1155 is Abstract1155Factory {
     /**
      * @notice Donate eth and mint corresponding NFTs
      */
-    function donate() public payable notPaused {
+    function buySeed(uint256 _seed) public payable notPaused {
+        // TODO add buy multiple nfts logic
         uint256 amountDonated = msg.value;
-        uint256 tier = 0;
-        if (amountDonated >= tierCost[2]) tier = 3;
-        else if (amountDonated >= tierCost[1]) tier = 2;
-        else {
-            require(
-                amountDonated >= tierCost[0],
-                "Amount donated must be higher"
-            );
-            tier = 1;
-        }
-        mint(tier);
+
+        require(amountDonated >= getPrice(_seed), "Invalid value sent");
+        mint(_seed);
     }
 
     /**
@@ -139,16 +138,18 @@ contract Seeds1155 is Abstract1155Factory {
     }
 
     /**
-     * @notice change all NFTs maxSupply
-     *
-     * @param _newSupplies array of new Supplies [tier1, tier2, tier3]
+     * @notice function that returns the price of an specific tokenID
+     * @param _index index of the token in the tiercos array
      */
-    function batchSetMaxSupply(uint256[3] memory _newSupplies)
-        external
-        onlyOwner
-    {
-        for (uint256 i = 0; i < _newSupplies.length; ++i)
-            nftsMaxSupply[i] = _newSupplies[i];
+    function getPrice(uint256 _index) public view returns (uint256) {
+        require(
+            _index >= 0 && _index <= 2,
+            "token id out of range or not buyable"
+        );
+
+        uint256 timeElapsed = block.timestamp - startAt;
+        uint256 discount = discountRate * timeElapsed;
+        return tierCost[_index] - discount;
     }
 
     /**
@@ -202,16 +203,16 @@ contract Seeds1155 is Abstract1155Factory {
     /**
      * @notice global mint function used for both whitelist and public mint
      *
-     * @param _tier the tier of tokens that the sender will receive
+     * @param _tokenId the tier of tokens that the sender will receive
      */
-    function mint(uint256 _tier) internal {
+    function mint(uint256 _tokenId) internal {
         require(!paused, "Contract is paused");
 
         require(
-            totalSupply(_tier) + 1 <= nftsMaxSupply[_tier],
+            totalSupply(_tokenId) + 1 <= nftsMaxSupply[_tokenId],
             "Max supply has been reached"
         );
 
-        _mint(msg.sender, _tier, 1, "");
+        _mint(msg.sender, _tokenId, 1, "");
     }
 }
