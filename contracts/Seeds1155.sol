@@ -9,15 +9,20 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./Abstract1155Factory.sol";
 
 contract Seeds1155 is Abstract1155Factory {
+    //TODO merkle whitelist implementation in the mint function
+    using MerkleProof for bytes32[];
+
     // TODO calculate discount rate according to the parameters required
     uint256 private constant duration = 7 days;
     uint256 public immutable discountRate = 100;
     uint256 public immutable startAt = block.timestamp;
     uint256 public immutable expiresAt = block.timestamp + duration;
 
+    bytes32 private _merkleRoot;
     address public multisigWallet;
     address public OLDEUS_721;
     bool public paused = false;
@@ -160,6 +165,14 @@ contract Seeds1155 is Abstract1155Factory {
     function batchSetTierCosts(uint256[3] memory _newCosts) external onlyOwner {
         for (uint256 i = 0; i < _newCosts.length; ++i)
             tierCost[i] = _newCosts[i];
+    }
+
+    /**
+     * @notice Set root for merkle tree whitelist
+     * @param newRoot merkle root to be set
+     */
+    function setMerkleRoot(bytes32 newRoot) external onlyOwner {
+        _merkleRoot = newRoot;
     }
 
     /**
