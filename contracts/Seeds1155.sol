@@ -161,6 +161,11 @@ contract Seeds1155 is Abstract1155Factory {
 
     //========================================================EXTERNAL=========================================================
 
+    function claimRareSerum(uint256 _id, uint256 _amount) external onlyOwner {
+        //TODO if we do it by whitelist generate new merkleRoot
+        // if not create admin minting or whitelist by mapping
+    }
+
     /**
      * @notice change the supply of the selected tier
      *
