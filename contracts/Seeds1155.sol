@@ -9,18 +9,24 @@ pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./Abstract1155Factory.sol";
 
 contract Seeds1155 is Abstract1155Factory {
+    //TODO merkle whitelist implementation in the mint function
+    using MerkleProof for bytes32[];
+
     // TODO calculate discount rate according to the parameters required
     uint256 private constant duration = 7 days;
     uint256 public immutable discountRate = 100;
     uint256 public immutable startAt = block.timestamp;
     uint256 public immutable expiresAt = block.timestamp + duration;
 
+    bytes32 private _merkleRoot;
     address public multisigWallet;
     address public OLDEUS_721;
     bool public paused = false;
+    bool public whitelistPhase = true;
     uint256[5] public nftsMaxSupply = [5555, 5555, 5555, 300, 100];
     uint256[3] public tierCost = [0.1 ether, 0.2 ether, 0.3 ether];
 
@@ -66,9 +72,25 @@ contract Seeds1155 is Abstract1155Factory {
      */
     function buySeed(uint256 _seed) public payable notPaused {
         // TODO add buy multiple nfts logic
-        uint256 amountDonated = msg.value;
+        require(!whitelistPhase, "whitelist phase currently active");
+        require(msg.value >= getPrice(_seed), "Invalid value sent");
+        mint(_seed);
+    }
 
-        require(amountDonated >= getPrice(_seed), "Invalid value sent");
+    function whitelistBuySeed(uint256 _seed, bytes32[] calldata proof)
+        public
+        payable
+    {
+        //TODO if needed tore in the merkle proof address -> quantity and allow people to mint multiple nfts
+        require(
+            MerkleProof.verify(
+                proof,
+                _merkleRoot,
+                keccak256(abi.encodePacked(_msgSender()))
+            ),
+            "Not whitelisted"
+        );
+
         mint(_seed);
     }
 
@@ -122,21 +144,6 @@ contract Seeds1155 is Abstract1155Factory {
         multisigWallet = newMultisig_;
     }
 
-    //========================================================EXTERNAL=========================================================
-
-    /**
-     * @notice change the supply of the selected tier
-     *
-     * @param _tier tier to change max supply for
-     * @param _newMaxAmount Max supply to be assigned to the nft
-     */
-    function setMaxSupply(uint256 _tier, uint256 _newMaxAmount)
-        external
-        onlyOwner
-    {
-        nftsMaxSupply[_tier] = _newMaxAmount;
-    }
-
     /**
      * @notice function that returns the price of an specific tokenID
      * @param _index index of the token in the tiercos array
@@ -152,6 +159,26 @@ contract Seeds1155 is Abstract1155Factory {
         return tierCost[_index] - discount;
     }
 
+    //========================================================EXTERNAL=========================================================
+
+    function claimRareSerum(uint256 _id, uint256 _amount) external onlyOwner {
+        //TODO if we do it by whitelist generate new merkleRoot
+        // if not create admin minting or whitelist by mapping
+    }
+
+    /**
+     * @notice change the supply of the selected tier
+     *
+     * @param _tier tier to change max supply for
+     * @param _newMaxAmount Max supply to be assigned to the nft
+     */
+    function setMaxSupply(uint256 _tier, uint256 _newMaxAmount)
+        external
+        onlyOwner
+    {
+        nftsMaxSupply[_tier] = _newMaxAmount;
+    }
+
     /**
      * @notice change all NFTs maxSupply
      *
@@ -163,10 +190,25 @@ contract Seeds1155 is Abstract1155Factory {
     }
 
     /**
+     * @notice Set root for merkle tree whitelist
+     * @param newRoot merkle root to be set
+     */
+    function setMerkleRoot(bytes32 newRoot) external onlyOwner {
+        _merkleRoot = newRoot;
+    }
+
+    /**
      * @notice function to pause and unpause minting
      */
     function flipPause() external onlyOwner {
         paused = !paused;
+    }
+
+    /**
+     * @notice function to
+     */
+    function flipWhitelistPhase() external onlyOwner {
+        whitelistPhase = !whitelistPhase;
     }
 
     /**
@@ -206,8 +248,6 @@ contract Seeds1155 is Abstract1155Factory {
      * @param _tokenId the tier of tokens that the sender will receive
      */
     function mint(uint256 _tokenId) internal {
-        require(!paused, "Contract is paused");
-
         require(
             totalSupply(_tokenId) + 1 <= nftsMaxSupply[_tokenId],
             "Max supply has been reached"
