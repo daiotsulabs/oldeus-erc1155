@@ -47,15 +47,15 @@ describe("ERC1155-oldeus", function () {
 
   describe("dutch auction", function () {
     it("Should reduce mint price every block", async function () {
-      const initialPrice = await oldeus.getPrice(1);
+      const initialPrice = await oldeus.getPrice();
       await moveBlocks(200);
-      const modifiedPrice = await oldeus.getPrice(1);
+      const modifiedPrice = await oldeus.getPrice();
 
       expect(initialPrice).to.above(modifiedPrice);
     });
     it("price should not be below min price", async () => {
       await moveBlocks(13000);
-      let price = await oldeus.getPrice(0);
+      let price = await oldeus.getPrice();
       price = price.toString();
 
       assert(
@@ -73,20 +73,49 @@ describe("ERC1155-oldeus", function () {
     });
 
     it("whitelist mint", async () => {
+      const msgvalue = { value: ethers.utils.parseEther("0.1") };
       const merkleProof = tree.getHexProof(keccak256(owner.address));
+      const merkleProof2 = tree.getHexProof(keccak256(addrs[0].address));
 
-      await oldeus.whitelistBuySeed(0, merkleProof);
-      const balanceOfOwner = await oldeus.balanceOf(owner.address, 0);
-      assert(balanceOfOwner.toString() === "1");
+      await oldeus.whitelistBuySeed(merkleProof, msgvalue);
+
+      await expect(oldeus.whitelistBuySeed(merkleProof, msgvalue)).to.emit(
+        oldeus,
+        "sell"
+      );
+
+      await expect(
+        oldeus.connect(addr2).whitelistBuySeed(merkleProof2, msgvalue)
+      ).to.be.revertedWith("Not whitelisted");
     });
 
-    it("should mint a token", async () => {
+    it("non whitelist mint", async () => {
       await oldeus.flipWhitelistPhase();
-      await oldeus.buySeed(0, {
-        value: ethers.utils.parseEther("0.1"),
-      });
-      const balanceOfMinter = await oldeus.balanceOf(owner.address, 0);
-      assert(balanceOfMinter.toString() === "1");
+      await expect(
+        oldeus.buySeed({
+          value: ethers.utils.parseEther("0.1"),
+        })
+      ).to.emit(oldeus, "sell");
+    });
+
+    it("mint all nfts", async () => {
+      const value = { value: ethers.utils.parseEther("0.5") };
+      await oldeus.flipWhitelistPhase();
+
+      let count = {
+        0: 0,
+        1: 0,
+        2: 0,
+      };
+      for (let i = 0; i < 30; i++) {
+        const tx = await oldeus.buySeed(value);
+        const txn = await tx.wait();
+
+        const key = parseInt(txn.logs[1].topics[2].toString(), 16);
+        count[key] += 1;
+      }
+
+      await expect(oldeus.balanceOf(owner.address, 0).toString() === "10");
     });
   });
 });

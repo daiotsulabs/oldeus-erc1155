@@ -6,7 +6,6 @@ pragma solidity ^0.8.7;
  * @dev Seed nfts smart contract
  * @author Oldeus team
  */
-
 import "hardhat/console.sol";
 import "./DutchAuctionManager.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
@@ -22,16 +21,11 @@ contract Seeds1155 is DutchAuctionManager {
     address public OLDEUS_721;
     bool public paused = false;
     bool public whitelistPhase = true;
-    uint256[5] public nftsMaxSupply = [5555, 5555, 5555, 300, 100];
+    uint256[5] public nftsMaxSupply = [10, 10, 10, 300, 100];
 
     //========================================================EVENTS===========================================================
 
-    /**
-     * @notice event that fires when funds are withdrawn
-     * @param to address that receives the contract balance
-     * @param value value sent to the address
-     */
-    event Withdrawn(address to, uint256 value);
+    event sell(address indexed buyer, uint256 indexed tokenId, uint256 price);
 
     /**
      * @notice event that fires when the OLDEUS_721 address changes
@@ -65,18 +59,13 @@ contract Seeds1155 is DutchAuctionManager {
     /**
      * @notice Donate eth and mint corresponding NFTs
      */
-    function buySeed(uint256 _seed) public payable notPaused {
+    function buySeed() public payable notPaused {
         require(!whitelistPhase, "whitelist phase currently active");
-        require(!paused, "contract is paused");
-        require(msg.value >= getPrice(_seed), "Invalid value sent");
-        mint(_seed);
+
+        mint(getRandomNumber());
     }
 
-    function whitelistBuySeed(uint256 _seed, bytes32[] calldata proof)
-        public
-        payable
-    {
-        //TODO if needed tore in the merkle proof address -> quantity and allow people to mint multiple nfts
+    function whitelistBuySeed(bytes32[] calldata proof) public payable {
         require(
             MerkleProof.verify(
                 proof,
@@ -86,7 +75,7 @@ contract Seeds1155 is DutchAuctionManager {
             "Not whitelisted"
         );
 
-        mint(_seed);
+        mint(getRandomNumber());
     }
 
     /**
@@ -134,6 +123,20 @@ contract Seeds1155 is DutchAuctionManager {
         uint256 randNum = uint256(
             keccak256(abi.encodePacked(block.difficulty, block.timestamp))
         ) % 3;
+
+        uint256 tries = 0;
+
+        while (totalSupply(randNum) >= nftsMaxSupply[randNum]) {
+            //console.log(randNum, "tries", tries);
+            if (tries == 2) revert("not nfts left to mint");
+            if (randNum < 2) {
+                randNum++;
+                tries++;
+            } else {
+                randNum = 0;
+                tries++;
+            }
+        }
 
         return randNum;
     }
@@ -215,7 +218,6 @@ contract Seeds1155 is DutchAuctionManager {
     function withdrawAll() external onlyOwner {
         (bool succ, ) = multisigWallet.call{value: address(this).balance}("");
         require(succ, "transaction failed");
-        emit Withdrawn(multisigWallet, address(this).balance);
     }
 
     //========================================================PRIVATE==========================================================
@@ -226,11 +228,14 @@ contract Seeds1155 is DutchAuctionManager {
      * @param _tokenId the tier of tokens that the sender will receive
      */
     function mint(uint256 _tokenId) internal {
+        require(!paused, "contract is paused");
+        require(msg.value >= getPrice(), "Invalid value sent");
         require(
             totalSupply(_tokenId) + 1 <= nftsMaxSupply[_tokenId],
             "Max supply has been reached"
         );
 
         _mint(msg.sender, _tokenId, 1, "");
+        emit sell(msg.sender, _tokenId, msg.value);
     }
 }
