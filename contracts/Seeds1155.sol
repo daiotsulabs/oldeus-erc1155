@@ -1,31 +1,31 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.7;
 
 /**
  * @title Oldeus seed erc1155 contract
  * @dev Seed nfts smart contract
  * @author Oldeus team
  */
-
 import "hardhat/console.sol";
+import "./DutchAuctionManager.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./Abstract1155Factory.sol";
 
-contract Seeds1155 is Abstract1155Factory {
+contract Seeds1155 is DutchAuctionManager {
+    //TODO merkle whitelist implementation in the mint function
+    using MerkleProof for bytes32[];
+
+    bytes32 private _merkleRoot;
     address public multisigWallet;
     address public OLDEUS_721;
     bool public paused = false;
-    uint256[5] public nftsMaxSupply = [5555, 5555, 5555, 300, 100];
-    uint256[3] public tierCost = [0.1 ether, 0.2 ether, 0.3 ether];
+    bool public whitelistPhase = true;
+    uint256[5] public nftsMaxSupply = [10, 10, 10, 300, 100];
 
     //========================================================EVENTS===========================================================
 
-    /**
-     * @notice event that fires when funds are withdrawn
-     * @param to address that receives the contract balance
-     * @param value value sent to the address
-     */
-    event Withdrawn(address to, uint256 value);
+    event sell(address indexed buyer, uint256 indexed tokenId, uint256 price);
 
     /**
      * @notice event that fires when the OLDEUS_721 address changes
@@ -45,12 +45,13 @@ contract Seeds1155 is Abstract1155Factory {
         string memory _name,
         string memory _symbol,
         string memory _uri,
+        bytes32 _mkroot,
         address _multisigWallet
     ) ERC1155(_uri) {
         _name = _name;
         _symbol = _symbol;
         multisigWallet = _multisigWallet;
-        _mint(msg.sender, 0, 1, "");
+        _merkleRoot = _mkroot;
     }
 
     //========================================================PUBLIC===========================================================
@@ -58,19 +59,23 @@ contract Seeds1155 is Abstract1155Factory {
     /**
      * @notice Donate eth and mint corresponding NFTs
      */
-    function donate() public payable notPaused {
-        uint256 amountDonated = msg.value;
-        uint256 tier = 0;
-        if (amountDonated >= tierCost[2]) tier = 3;
-        else if (amountDonated >= tierCost[1]) tier = 2;
-        else {
-            require(
-                amountDonated >= tierCost[0],
-                "Amount donated must be higher"
-            );
-            tier = 1;
-        }
-        mint(tier);
+    function buySeed() public payable notPaused {
+        require(!whitelistPhase, "whitelist phase currently active");
+
+        mint(getRandomNumber());
+    }
+
+    function whitelistBuySeed(bytes32[] calldata proof) public payable {
+        require(
+            MerkleProof.verify(
+                proof,
+                _merkleRoot,
+                keccak256(abi.encodePacked(_msgSender()))
+            ),
+            "Not whitelisted"
+        );
+
+        mint(getRandomNumber());
     }
 
     /**
@@ -85,15 +90,6 @@ contract Seeds1155 is Abstract1155Factory {
             "Max supply has been reached"
         );
         _mint(receiver, nftTier, 1, "");
-    }
-
-    /**
-     * @notice withdraw all the funds to the multisig wallet tp later be donated to Ukrainian relief organizations
-     */
-    function withdrawAll() public payable onlyOwner {
-        (bool succ, ) = multisigWallet.call{value: address(this).balance}("");
-        require(succ, "transaction failed");
-        emit Withdrawn(multisigWallet, address(this).balance);
     }
 
     /**
@@ -123,7 +119,34 @@ contract Seeds1155 is Abstract1155Factory {
         multisigWallet = newMultisig_;
     }
 
+    function getRandomNumber() public view returns (uint256) {
+        uint256 randNum = uint256(
+            keccak256(abi.encodePacked(block.difficulty, block.timestamp))
+        ) % 3;
+
+        uint256 tries = 0;
+
+        while (totalSupply(randNum) >= nftsMaxSupply[randNum]) {
+            //console.log(randNum, "tries", tries);
+            if (tries == 2) revert("not nfts left to mint");
+            if (randNum < 2) {
+                randNum++;
+                tries++;
+            } else {
+                randNum = 0;
+                tries++;
+            }
+        }
+
+        return randNum;
+    }
+
     //========================================================EXTERNAL=========================================================
+
+    function claimRareSerum(uint256 _id, uint256 _amount) external onlyOwner {
+        //TODO if we do it by whitelist generate new merkleRoot
+        // if not create admin minting or whitelist by mapping
+    }
 
     /**
      * @notice change the supply of the selected tier
@@ -139,26 +162,11 @@ contract Seeds1155 is Abstract1155Factory {
     }
 
     /**
-     * @notice change all NFTs maxSupply
-     *
-     * @param _newSupplies array of new Supplies [tier1, tier2, tier3]
+     * @notice Set root for merkle tree whitelist
+     * @param newRoot merkle root to be set
      */
-    function batchSetMaxSupply(uint256[3] memory _newSupplies)
-        external
-        onlyOwner
-    {
-        for (uint256 i = 0; i < _newSupplies.length; ++i)
-            nftsMaxSupply[i] = _newSupplies[i];
-    }
-
-    /**
-     * @notice change all NFTs maxSupply
-     *
-     * @param _newCosts array of new Costs [tier1, tier2, tier3]
-     */
-    function batchSetTierCosts(uint256[3] memory _newCosts) external onlyOwner {
-        for (uint256 i = 0; i < _newCosts.length; ++i)
-            tierCost[i] = _newCosts[i];
+    function setMerkleRoot(bytes32 newRoot) external onlyOwner {
+        _merkleRoot = newRoot;
     }
 
     /**
@@ -166,6 +174,13 @@ contract Seeds1155 is Abstract1155Factory {
      */
     function flipPause() external onlyOwner {
         paused = !paused;
+    }
+
+    /**
+     * @notice function to
+     */
+    function flipWhitelistPhase() external onlyOwner {
+        whitelistPhase = !whitelistPhase;
     }
 
     /**
@@ -197,21 +212,30 @@ contract Seeds1155 is Abstract1155Factory {
         }
     }
 
+    /**
+     * @notice withdraw all the funds to the multisig wallet tp later be donated to Ukrainian relief organizations
+     */
+    function withdrawAll() external onlyOwner {
+        (bool succ, ) = multisigWallet.call{value: address(this).balance}("");
+        require(succ, "transaction failed");
+    }
+
     //========================================================PRIVATE==========================================================
 
     /**
      * @notice global mint function used for both whitelist and public mint
      *
-     * @param _tier the tier of tokens that the sender will receive
+     * @param _tokenId the tier of tokens that the sender will receive
      */
-    function mint(uint256 _tier) internal {
-        require(!paused, "Contract is paused");
-
+    function mint(uint256 _tokenId) internal {
+        require(!paused, "contract is paused");
+        require(msg.value >= getPrice(), "Invalid value sent");
         require(
-            totalSupply(_tier) + 1 <= nftsMaxSupply[_tier],
+            totalSupply(_tokenId) + 1 <= nftsMaxSupply[_tokenId],
             "Max supply has been reached"
         );
 
-        _mint(msg.sender, _tier, 1, "");
+        _mint(msg.sender, _tokenId, 1, "");
+        emit sell(msg.sender, _tokenId, msg.value);
     }
 }
