@@ -45,6 +45,8 @@ describe("ERC1155-oldeus", function () {
     });
   });
 
+  describe("Erc1155 logic", () => {});
+
   describe("dutch auction", function () {
     it("Should reduce mint price every block", async function () {
       const initialPrice = await oldeus.getPrice();
@@ -114,7 +116,7 @@ describe("ERC1155-oldeus", function () {
         const key = parseInt(txn.logs[1].topics[2].toString(), 16);
         count[key] += 1;
       }
-
+      console.log(count);
       await expect(oldeus.balanceOf(owner.address, 0).toString() === "10");
     });
   });

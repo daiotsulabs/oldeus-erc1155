@@ -4,7 +4,9 @@ const { ethers } = require("ethers");
 const { keccak256 } = ethers.utils;
 
 const generateMerkleTree = (addresses) => {
-  const leaves = addresses.map((account) => keccak256(account.address));
+  const leaves = addresses.map((account) =>
+    keccak256(account.address ?? account)
+  );
   const tree = new MerkleTree(leaves, keccak256, { sort: true });
 
   return tree;
