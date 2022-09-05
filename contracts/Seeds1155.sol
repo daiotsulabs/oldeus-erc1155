@@ -7,12 +7,15 @@ pragma solidity ^0.8.7;
  * @author Oldeus team
  */
 import "hardhat/console.sol";
-import "./DutchAuctionManager.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./Abstract1155Factory.sol";
 
-contract Seeds1155 is DutchAuctionManager {
+//TODO add team free mint functionality
+//TODO add wl3 ( vital + stone ) functionality
+//TODO change requires to custom error to improve gas efficiency and code readability
+
+contract Seeds1155 is Abstract1155Factory {
     //TODO merkle whitelist implementation in the mint function
     using MerkleProof for bytes32[];
 
@@ -22,10 +25,14 @@ contract Seeds1155 is DutchAuctionManager {
     bool public paused = false;
     bool public whitelistPhase = true;
     uint256[5] public nftsMaxSupply = [10, 10, 10, 300, 100];
+    uint256 price = 0.2 ether;
+    uint256 wlprice = 0.1 ether;
+
+    mapping(address => uint256) Claimed;
 
     //========================================================EVENTS===========================================================
 
-    event sell(address indexed buyer, uint256 indexed tokenId, uint256 price);
+    event sale(address indexed buyer, uint256 indexed tokenId, uint256 price);
 
     /**
      * @notice event that fires when the OLDEUS_721 address changes
@@ -59,23 +66,40 @@ contract Seeds1155 is DutchAuctionManager {
     /**
      * @notice Donate eth and mint corresponding NFTs
      */
-    function buySeed() public payable notPaused {
+    function buySeed(uint256 amount) public payable notPaused {
         require(!whitelistPhase, "whitelist phase currently active");
 
-        mint(getRandomNumber());
+        mint(getRandomNumber(), amount);
     }
 
-    function whitelistBuySeed(bytes32[] calldata proof) public payable {
+    /**
+     * @notice whitelist mint
+     * @param proof merkle proof must be provided to perform correct check
+     * @param _type type of whitelist user is claiming to have \ contract is currently in
+     * @param amount amount of nfts to buy
+     */
+    function whitelistBuySeed(
+        bytes32[] calldata proof,
+        uint256 _type,
+        uint256 amount
+    ) public payable {
         require(
             MerkleProof.verify(
                 proof,
                 _merkleRoot,
-                keccak256(abi.encodePacked(_msgSender()))
+                keccak256(abi.encodePacked(msg.sender, _type))
             ),
             "Not whitelisted"
         );
 
-        mint(getRandomNumber());
+        require(
+            Claimed[msg.sender] <= _type && amount <= _type,
+            "minting amount exceeded"
+        );
+
+        Claimed[msg.sender] += amount;
+
+        mint(getRandomNumber(), amount);
     }
 
     /**
@@ -227,15 +251,15 @@ contract Seeds1155 is DutchAuctionManager {
      *
      * @param _tokenId the tier of tokens that the sender will receive
      */
-    function mint(uint256 _tokenId) internal {
+    function mint(uint256 _tokenId, uint256 amount) internal {
         require(!paused, "contract is paused");
-        require(msg.value >= getPrice(), "Invalid value sent");
+        require(msg.value >= price * amount, "Invalid value sent");
         require(
-            totalSupply(_tokenId) + 1 <= nftsMaxSupply[_tokenId],
+            totalSupply(_tokenId) + amount <= nftsMaxSupply[_tokenId],
             "Max supply has been reached"
         );
 
-        _mint(msg.sender, _tokenId, 1, "");
-        emit sell(msg.sender, _tokenId, msg.value);
+        _mint(msg.sender, _tokenId, amount, "");
+        emit sale(msg.sender, _tokenId, msg.value);
     }
 }

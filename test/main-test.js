@@ -17,14 +17,21 @@ describe("ERC1155-oldeus", function () {
   beforeEach(async function () {
     // Get the ContractFactory and Signers here.
     [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
-    tree = generateMerkleTree([owner, addr1, addr2]);
+    tree = generateMerkleTree([
+      { address: owner.address, type: 1 },
+      { address: addr1.address, type: 2 },
+      { address: addr2.address, type: 1 },
+    ]);
+
+    merkleRoot = tree.getHexRoot();
+
     contract = await ethers.getContractFactory("Seeds1155");
 
     oldeus = await contract.deploy(
       NAME,
       SYMBOL,
       URI,
-      tree.getHexRoot(),
+      merkleRoot,
       addr1.address
     );
   });
@@ -47,26 +54,6 @@ describe("ERC1155-oldeus", function () {
 
   describe("Erc1155 logic", () => {});
 
-  describe("dutch auction", function () {
-    it("Should reduce mint price every block", async function () {
-      const initialPrice = await oldeus.getPrice();
-      await moveBlocks(200);
-      const modifiedPrice = await oldeus.getPrice();
-
-      expect(initialPrice).to.above(modifiedPrice);
-    });
-    it("price should not be below min price", async () => {
-      await moveBlocks(13000);
-      let price = await oldeus.getPrice();
-      price = price.toString();
-
-      assert(
-        price === ethers.utils.parseEther("0.04").toString(),
-        "price greater or equal than target"
-      );
-    });
-  });
-
   describe("minting process", () => {
     it("sould create random number between 1 and 3", async () => {
       let rand = await oldeus.getRandomNumber();
@@ -75,33 +62,41 @@ describe("ERC1155-oldeus", function () {
     });
 
     it("whitelist mint", async () => {
-      const msgvalue = { value: ethers.utils.parseEther("0.1") };
-      const merkleProof = tree.getHexProof(keccak256(owner.address));
-      const merkleProof2 = tree.getHexProof(keccak256(addrs[0].address));
-
-      await oldeus.whitelistBuySeed(merkleProof, msgvalue);
-
-      await expect(oldeus.whitelistBuySeed(merkleProof, msgvalue)).to.emit(
-        oldeus,
-        "sell"
+      const msgvalue = { value: ethers.utils.parseEther("0.2") };
+      const merkleProof = tree.getHexProof(
+        keccak256(
+          ethers.utils.solidityPack(["address", "uint256"], [owner.address, 1])
+        )
       );
 
+      console.log(merkleProof);
+
+      console.log(
+        tree.verify(merkleProof, keccak256(owner.address, 1), merkleRoot),
+        "oni chan"
+      );
+      const merkleProof2 = tree.getHexProof(keccak256(addrs[0].address, 2));
+
       await expect(
-        oldeus.connect(addr2).whitelistBuySeed(merkleProof2, msgvalue)
+        oldeus.whitelistBuySeed(merkleProof, 1, 1, msgvalue)
+      ).to.emit(oldeus, "sale");
+
+      await expect(
+        oldeus.connect(addr2).whitelistBuySeed(merkleProof2, 1, 1, msgvalue)
       ).to.be.revertedWith("Not whitelisted");
     });
 
     it("non whitelist mint", async () => {
       await oldeus.flipWhitelistPhase();
       await expect(
-        oldeus.buySeed({
-          value: ethers.utils.parseEther("0.1"),
+        oldeus.buySeed(1, {
+          value: ethers.utils.parseEther("0.2"),
         })
-      ).to.emit(oldeus, "sell");
+      ).to.emit(oldeus, "sale");
     });
 
     it("mint all nfts", async () => {
-      const value = { value: ethers.utils.parseEther("0.5") };
+      const value = { value: ethers.utils.parseUnits("0.2", "ether") };
       await oldeus.flipWhitelistPhase();
 
       let count = {
@@ -110,7 +105,7 @@ describe("ERC1155-oldeus", function () {
         2: 0,
       };
       for (let i = 0; i < 30; i++) {
-        const tx = await oldeus.buySeed(value);
+        const tx = await oldeus.buySeed(1, value);
         const txn = await tx.wait();
 
         const key = parseInt(txn.logs[1].topics[2].toString(), 16);
