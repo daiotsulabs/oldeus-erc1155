@@ -69,12 +69,6 @@ describe("ERC1155-oldeus", function () {
         )
       );
 
-      console.log(merkleProof);
-
-      console.log(
-        tree.verify(merkleProof, keccak256(owner.address, 1), merkleRoot),
-        "oni chan"
-      );
       const merkleProof2 = tree.getHexProof(keccak256(addrs[0].address, 2));
 
       await expect(
@@ -87,7 +81,7 @@ describe("ERC1155-oldeus", function () {
     });
 
     it("non whitelist mint", async () => {
-      await oldeus.flipWhitelistPhase();
+      await oldeus.changePhase(2);
       await expect(
         oldeus.buySeed(1, {
           value: ethers.utils.parseEther("0.2"),
@@ -97,22 +91,24 @@ describe("ERC1155-oldeus", function () {
 
     it("mint all nfts", async () => {
       const value = { value: ethers.utils.parseUnits("0.2", "ether") };
-      await oldeus.flipWhitelistPhase();
+      await oldeus.changePhase(2);
 
       let count = {
         0: 0,
         1: 0,
         2: 0,
       };
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 1000; i++) {
         const tx = await oldeus.buySeed(1, value);
         const txn = await tx.wait();
 
         const key = parseInt(txn.logs[1].topics[2].toString(), 16);
         count[key] += 1;
       }
-      console.log(count);
-      await expect(oldeus.balanceOf(owner.address, 0).toString() === "10");
+
+      expect(await oldeus.totalSupply(0)).to.be.equal("11");
+      expect(await oldeus.totalSupply(1)).to.be.equal("500");
+      expect(await oldeus.totalSupply(2)).to.be.equal("489");
     });
   });
 });

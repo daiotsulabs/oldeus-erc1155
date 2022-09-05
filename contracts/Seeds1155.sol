@@ -8,7 +8,6 @@ pragma solidity ^0.8.7;
  */
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./Abstract1155Factory.sol";
 
 //TODO add team free mint functionality
@@ -16,23 +15,22 @@ import "./Abstract1155Factory.sol";
 //TODO change requires to custom error to improve gas efficiency and code readability
 
 contract Seeds1155 is Abstract1155Factory {
-    //TODO merkle whitelist implementation in the mint function
-    using MerkleProof for bytes32[];
-
-    bytes32 private _merkleRoot;
     address public multisigWallet;
     address public OLDEUS_721;
     bool public paused = false;
-    bool public whitelistPhase = true;
-    uint256[5] public nftsMaxSupply = [10, 10, 10, 300, 100];
+    uint256[5] public nftsMaxSupply = [11, 500, 489, 300, 100];
     uint256 price = 0.2 ether;
     uint256 wlprice = 0.1 ether;
+    // phase 1 -> wl | 2 -> public | 3 -> claim serum
+    uint8 phase = 1;
 
     mapping(address => uint256) Claimed;
+    mapping(address => bool) specialClaimed;
 
     //========================================================EVENTS===========================================================
 
     event sale(address indexed buyer, uint256 indexed tokenId, uint256 price);
+    event phaseChanged(uint8 newPhase);
 
     /**
      * @notice event that fires when the OLDEUS_721 address changes
@@ -54,11 +52,10 @@ contract Seeds1155 is Abstract1155Factory {
         string memory _uri,
         bytes32 _mkroot,
         address _multisigWallet
-    ) ERC1155(_uri) {
+    ) ERC1155(_uri) WhitelistManager(_mkroot) {
         _name = _name;
         _symbol = _symbol;
         multisigWallet = _multisigWallet;
-        _merkleRoot = _mkroot;
     }
 
     //========================================================PUBLIC===========================================================
@@ -67,7 +64,9 @@ contract Seeds1155 is Abstract1155Factory {
      * @notice Donate eth and mint corresponding NFTs
      */
     function buySeed(uint256 amount) public payable notPaused {
-        require(!whitelistPhase, "whitelist phase currently active");
+        require(phase == 2, "Public sale not active");
+
+        Claimed[msg.sender] += amount;
 
         mint(getRandomNumber(), amount);
     }
@@ -82,24 +81,26 @@ contract Seeds1155 is Abstract1155Factory {
         bytes32[] calldata proof,
         uint256 _type,
         uint256 amount
-    ) public payable {
+    ) public payable isWhitelisted(proof, _type) {
+        require(phase == 1, "we are not in wl phase");
         require(
-            MerkleProof.verify(
-                proof,
-                _merkleRoot,
-                keccak256(abi.encodePacked(msg.sender, _type))
-            ),
-            "Not whitelisted"
-        );
-
-        require(
-            Claimed[msg.sender] <= _type && amount <= _type,
+            userWlMints[msg.sender] <= _type && amount <= _type,
             "minting amount exceeded"
         );
 
-        Claimed[msg.sender] += amount;
+        userWlMints[msg.sender] += amount;
 
         mint(getRandomNumber(), amount);
+    }
+
+    function receiveSpecialNft(bytes32[] calldata proof, uint256 _type)
+        public
+        payable
+        isWhitelisted(proof, _type)
+    {
+        require(!specialClaimed[msg.sender]);
+        specialClaimed[msg.sender] = true;
+        mint(_type, 1);
     }
 
     /**
@@ -186,25 +187,10 @@ contract Seeds1155 is Abstract1155Factory {
     }
 
     /**
-     * @notice Set root for merkle tree whitelist
-     * @param newRoot merkle root to be set
-     */
-    function setMerkleRoot(bytes32 newRoot) external onlyOwner {
-        _merkleRoot = newRoot;
-    }
-
-    /**
      * @notice function to pause and unpause minting
      */
     function flipPause() external onlyOwner {
         paused = !paused;
-    }
-
-    /**
-     * @notice function to
-     */
-    function flipWhitelistPhase() external onlyOwner {
-        whitelistPhase = !whitelistPhase;
     }
 
     /**
@@ -234,6 +220,11 @@ contract Seeds1155 is Abstract1155Factory {
                 ++i;
             }
         }
+    }
+
+    function changePhase(uint8 _newPhase) external onlyOwner {
+        phase = _newPhase;
+        emit phaseChanged(_newPhase);
     }
 
     /**
