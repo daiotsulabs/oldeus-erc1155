@@ -10,6 +10,7 @@ import "hardhat/console.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Abstract1155Factory.sol";
 
+//TODO add team free mint functionality
 //TODO add wl3 ( vital + stone ) functionality
 //TODO change requires to custom error to improve gas efficiency and code readability
 
@@ -174,11 +175,6 @@ contract Seeds1155 is Abstract1155Factory {
     }
 
     //========================================================EXTERNAL=========================================================
-
-    function claimRareSerum(uint256 _id, uint256 _amount) external onlyOwner {
-        //TODO if we do it by whitelist generate new merkleRoot
-        // if not create admin minting or whitelist by mapping
-    }
 
     /**
      * @notice change the supply of the selected tier
