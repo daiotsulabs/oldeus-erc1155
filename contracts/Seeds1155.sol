@@ -10,7 +10,6 @@ import "hardhat/console.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Abstract1155Factory.sol";
 
-//TODO add team free mint functionality
 //TODO add wl3 ( vital + stone ) functionality
 //TODO change requires to custom error to improve gas efficiency and code readability
 
@@ -83,6 +82,7 @@ contract Seeds1155 is Abstract1155Factory {
         uint256 amount
     ) public payable isWhitelisted(proof, _type) {
         require(phase == 1, "we are not in wl phase");
+        require(_type >= 1 && _type <= 2, "incorrect wlType for this phase");
         require(
             userWlMints[msg.sender] <= _type && amount <= _type,
             "minting amount exceeded"
@@ -93,14 +93,21 @@ contract Seeds1155 is Abstract1155Factory {
         mint(getRandomNumber(), amount);
     }
 
+    /**
+     * @notice function to claim elemental stone or blood vital
+     * @param proof hex proof to check address in wl
+     * @param _type type of wl to claim, must be 3
+     */
     function receiveSpecialNft(bytes32[] calldata proof, uint256 _type)
         public
         payable
         isWhitelisted(proof, _type)
     {
+        require(_type == 3, "wl type must be 3");
         require(!specialClaimed[msg.sender]);
         specialClaimed[msg.sender] = true;
-        mint(_type, 1);
+
+        _mint(msg.sender, _type, 1, "");
     }
 
     /**
