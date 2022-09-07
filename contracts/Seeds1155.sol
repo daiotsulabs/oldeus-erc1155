@@ -6,7 +6,7 @@ pragma solidity ^0.8.7;
  * @dev Seed nfts smart contract
  * @author Oldeus team
  */
-import "hardhat/console.sol";
+
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Abstract1155Factory.sol";
 
@@ -31,12 +31,6 @@ contract Seeds1155 is Abstract1155Factory {
 
     event sale(address indexed buyer, uint256 indexed tokenId, uint256 price);
     event phaseChanged(uint8 newPhase);
-
-    /**
-     * @notice event that fires when the OLDEUS_721 address changes
-     * @param _address new address of the contract
-     * @param timestamp block.timestamp
-     */
     event OldeusContractChanged(address _address, uint256 timestamp);
 
     //========================================================MODIFIERS========================================================
@@ -213,11 +207,11 @@ contract Seeds1155 is Abstract1155Factory {
      *   Only 1 token burned === elve, beast, human
      *  2 tokenids minted === special nft minted
      */
-    function burn(address account, uint16[] memory tokenIds) external {
+    function burnSeed(address account, uint256[] memory tokenIds) external {
         require(msg.sender == OLDEUS_721, "invalid address");
 
         for (uint16 i = 0; i < tokenIds.length; ) {
-            _burn(account, tokenIds[i], 1);
+            burn(account, tokenIds[i], 1);
 
             unchecked {
                 ++i;

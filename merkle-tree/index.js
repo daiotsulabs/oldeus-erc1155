@@ -34,9 +34,6 @@ const testMerkle = () => {
 
   const leaf = keccak256("0x22", 2);
   const proof = tree.getHexProof(leaf);
-  console.log(tree.verify(proof, leaf, root));
 };
-
-testMerkle();
 
 module.exports = generateMerkleTree;
