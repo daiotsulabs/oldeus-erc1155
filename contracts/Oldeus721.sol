@@ -29,4 +29,13 @@ contract Oldeus is ERC721, ReentrancyGuard {
 
         _safeMint(msg.sender, currSupply + 1);
     }
+
+    // Burn tokenId 0 + 1
+    function redeemVampire(uint256[] memory tokenIds) external nonReentrant {
+        SeedsContract.burnSeed(msg.sender, tokenIds);
+    }
+
+    function redeemElemental(uint256[] memory tokenIds) external nonReentrant {
+        SeedsContract.burnSeed(msg.sender, tokenIds);
+    }
 }

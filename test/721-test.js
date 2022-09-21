@@ -76,5 +76,11 @@ describe("ERC721 Oldeus", function () {
 
       expect(await mainContract.balanceOf(owner.address)).to.be.equal(1);
     });
+
+    it("shouldn't allow burn from outside the contract", async () => {
+      await expect(
+        seedsContract.burnSeed(owner.address, [0])
+      ).to.be.revertedWith("invalid address");
+    });
   });
 });
