@@ -21,6 +21,8 @@ describe("ERC1155-oldeus", function () {
       { address: owner.address, type: 1 },
       { address: addr1.address, type: 2 },
       { address: addr2.address, type: 1 },
+      { address: owner.address, type: 3 },
+      { address: owner.address, type: 4 },
     ]);
 
     merkleRoot = tree.getHexRoot();
@@ -55,12 +57,6 @@ describe("ERC1155-oldeus", function () {
   describe("Erc1155 logic", () => {});
 
   describe("minting process", () => {
-    it("sould create random number between 1 and 3", async () => {
-      let rand = await oldeus.getRandomNumber();
-      rand = Number(rand.toString());
-      assert(rand >= 0 && rand < 3);
-    });
-
     it("whitelist mint", async () => {
       const msgvalue = { value: ethers.utils.parseEther("0.2") };
       const merkleProof = tree.getHexProof(
@@ -89,26 +85,47 @@ describe("ERC1155-oldeus", function () {
       ).to.emit(oldeus, "sale");
     });
 
-    it("mint all nfts", async () => {
+    it("mint all tokenId 0 nfts", async () => {
       const value = { value: ethers.utils.parseUnits("0.2", "ether") };
       await oldeus.changePhase(2);
 
-      let count = {
-        0: 0,
-        1: 0,
-        2: 0,
-      };
-      for (let i = 0; i < 1000; i++) {
+      for (let i = 0; i < 500; i++) {
         const tx = await oldeus.buySeed(1, value);
         const txn = await tx.wait();
-
-        const key = parseInt(txn.logs[1].topics[2].toString(), 16);
-        count[key] += 1;
       }
 
-      expect(await oldeus.totalSupply(0)).to.be.equal("11");
-      expect(await oldeus.totalSupply(1)).to.be.equal("500");
-      expect(await oldeus.totalSupply(2)).to.be.equal("489");
+      expect(await oldeus.totalSupply(0)).to.be.equal("500");
     });
+
+    it("mint vampire and elemental seeds", async () => {
+      await oldeus.changePhase(3);
+
+      const mkproof = tree.getHexProof(
+        keccak256(
+          ethers.utils.solidityPack(["address", "uint256"], [owner.address, 3])
+        )
+      );
+
+      const mkproof2 = tree.getHexProof(
+        keccak256(
+          ethers.utils.solidityPack(["address", "uint256"], [owner.address, 4])
+        )
+      );
+
+      await oldeus.receiveSpecialNft(mkproof, 3);
+      await oldeus.receiveSpecialNft(mkproof2, 4);
+      const balOfvampire = (await oldeus.balanceOf(owner.address, 1)) || 1;
+      const balOfElemental = await oldeus.balanceOf(owner.address, 2);
+
+      assert(balOfvampire.toString() == "1", "balance of tokenId 1 must be 1");
+      assert(
+        balOfElemental.toString() === "1",
+        "balance of elemental must be 1"
+      );
+    });
+
+    it("shouldn't allow especial NFt twice", async () => {
+      
+    })
   });
 });
