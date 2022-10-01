@@ -6,32 +6,28 @@ pragma solidity ^0.8.7;
  * @dev Seed nfts smart contract
  * @author Oldeus team
  */
-import "hardhat/console.sol";
-import "./DutchAuctionManager.sol";
+
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "./Abstract1155Factory.sol";
 
-contract Seeds1155 is DutchAuctionManager {
-    //TODO merkle whitelist implementation in the mint function
-    using MerkleProof for bytes32[];
-
-    bytes32 private _merkleRoot;
+contract Seeds1155 is Abstract1155Factory {
     address public multisigWallet;
     address public OLDEUS_721;
     bool public paused = false;
-    bool public whitelistPhase = true;
-    uint256[5] public nftsMaxSupply = [10, 10, 10, 300, 100];
+    // 0 -> baseSeed | 1 -> vampire seed | 2 -> elemental seed
+    uint256[5] public nftsMaxSupply = [500, 100, 100];
+    uint256 price = 0.2 ether;
+    uint256 wlprice = 0.1 ether;
+    // phase 1 -> wl | 2 -> public | 3 -> claim serum
+    uint8 phase = 1;
+
+    mapping(address => uint256) Claimed;
+    mapping(address => bool) specialClaimed;
 
     //========================================================EVENTS===========================================================
 
-    event sell(address indexed buyer, uint256 indexed tokenId, uint256 price);
-
-    /**
-     * @notice event that fires when the OLDEUS_721 address changes
-     * @param _address new address of the contract
-     * @param timestamp block.timestamp
-     */
+    event sale(address indexed buyer, uint256 indexed tokenId, uint256 price);
+    event phaseChanged(uint8 newPhase);
     event OldeusContractChanged(address _address, uint256 timestamp);
 
     //========================================================MODIFIERS========================================================
@@ -47,35 +43,64 @@ contract Seeds1155 is DutchAuctionManager {
         string memory _uri,
         bytes32 _mkroot,
         address _multisigWallet
-    ) ERC1155(_uri) {
+    ) ERC1155(_uri) WhitelistManager(_mkroot) {
         _name = _name;
         _symbol = _symbol;
         multisigWallet = _multisigWallet;
-        _merkleRoot = _mkroot;
+        _setRoyalties(multisigWallet, 500);
     }
 
     //========================================================PUBLIC===========================================================
 
     /**
-     * @notice Donate eth and mint corresponding NFTs
+     * @notice buy normal seed without wl -> tokenId 0
      */
-    function buySeed() public payable notPaused {
-        require(!whitelistPhase, "whitelist phase currently active");
+    function buySeed(uint256 amount) public payable notPaused {
+        require(phase == 2, "Public sale not active");
 
-        mint(getRandomNumber());
+        Claimed[msg.sender] += amount;
+
+        mint(0, amount);
     }
 
-    function whitelistBuySeed(bytes32[] calldata proof) public payable {
+    /**
+     * @notice whitelist mint
+     * @param proof merkle proof must be provided to perform correct check
+     * @param _type type of whitelist user is claiming to have \ contract is currently in
+     * @param amount amount of nfts to buy
+     */
+    function whitelistBuySeed(
+        bytes32[] calldata proof,
+        uint256 _type,
+        uint256 amount
+    ) public payable isWhitelisted(proof, _type) {
+        require(phase == 1, "we are not in wl phase");
+        require(_type >= 1 && _type <= 2, "incorrect wlType for this phase");
         require(
-            MerkleProof.verify(
-                proof,
-                _merkleRoot,
-                keccak256(abi.encodePacked(_msgSender()))
-            ),
-            "Not whitelisted"
+            userWlMints[msg.sender] <= _type && amount <= _type,
+            "minting amount exceeded"
         );
 
-        mint(getRandomNumber());
+        userWlMints[msg.sender] += amount;
+
+        mint(0, amount);
+    }
+
+    /**
+     * @notice function to claim elemental stone or blood vital
+     * @param proof hex proof to check address in wl
+     * @param _type type of wl to claim, must be 1 or 2
+     */
+    function receiveSpecialNft(bytes32[] calldata proof, uint256 _type)
+        public
+        payable
+        isWhitelisted(proof, _type)
+    {
+        require(phase == 3, "phase sould be 3");
+        require(!specialClaimed[msg.sender]);
+        specialClaimed[msg.sender] = true;
+
+        mint(_type - 2, 1);
     }
 
     /**
@@ -119,34 +144,7 @@ contract Seeds1155 is DutchAuctionManager {
         multisigWallet = newMultisig_;
     }
 
-    function getRandomNumber() public view returns (uint256) {
-        uint256 randNum = uint256(
-            keccak256(abi.encodePacked(block.difficulty, block.timestamp))
-        ) % 3;
-
-        uint256 tries = 0;
-
-        while (totalSupply(randNum) >= nftsMaxSupply[randNum]) {
-            //console.log(randNum, "tries", tries);
-            if (tries == 2) revert("not nfts left to mint");
-            if (randNum < 2) {
-                randNum++;
-                tries++;
-            } else {
-                randNum = 0;
-                tries++;
-            }
-        }
-
-        return randNum;
-    }
-
     //========================================================EXTERNAL=========================================================
-
-    function claimRareSerum(uint256 _id, uint256 _amount) external onlyOwner {
-        //TODO if we do it by whitelist generate new merkleRoot
-        // if not create admin minting or whitelist by mapping
-    }
 
     /**
      * @notice change the supply of the selected tier
@@ -162,25 +160,10 @@ contract Seeds1155 is DutchAuctionManager {
     }
 
     /**
-     * @notice Set root for merkle tree whitelist
-     * @param newRoot merkle root to be set
-     */
-    function setMerkleRoot(bytes32 newRoot) external onlyOwner {
-        _merkleRoot = newRoot;
-    }
-
-    /**
      * @notice function to pause and unpause minting
      */
     function flipPause() external onlyOwner {
         paused = !paused;
-    }
-
-    /**
-     * @notice function to
-     */
-    function flipWhitelistPhase() external onlyOwner {
-        whitelistPhase = !whitelistPhase;
     }
 
     /**
@@ -200,16 +183,21 @@ contract Seeds1155 is DutchAuctionManager {
      *   Only 1 token burned === elve, beast, human
      *  2 tokenids minted === special nft minted
      */
-    function burn(address account, uint16[] memory tokenIds) external {
+    function burnSeed(address account, uint256[] memory tokenIds) external {
         require(msg.sender == OLDEUS_721, "invalid address");
 
         for (uint16 i = 0; i < tokenIds.length; ) {
-            _burn(account, tokenIds[i], 1);
+            burn(account, tokenIds[i], 1);
 
             unchecked {
                 ++i;
             }
         }
+    }
+
+    function changePhase(uint8 _newPhase) external onlyOwner {
+        phase = _newPhase;
+        emit phaseChanged(_newPhase);
     }
 
     /**
@@ -227,15 +215,18 @@ contract Seeds1155 is DutchAuctionManager {
      *
      * @param _tokenId the tier of tokens that the sender will receive
      */
-    function mint(uint256 _tokenId) internal {
+    function mint(uint256 _tokenId, uint256 amount) internal {
         require(!paused, "contract is paused");
-        require(msg.value >= getPrice(), "Invalid value sent");
+
+        if (_tokenId == 0)
+            require(msg.value >= price * amount, "Invalid value sent");
+
         require(
-            totalSupply(_tokenId) + 1 <= nftsMaxSupply[_tokenId],
+            totalSupply(_tokenId) + amount <= nftsMaxSupply[_tokenId],
             "Max supply has been reached"
         );
 
-        _mint(msg.sender, _tokenId, 1, "");
-        emit sell(msg.sender, _tokenId, msg.value);
+        _mint(msg.sender, _tokenId, amount, "");
+        emit sale(msg.sender, _tokenId, msg.value);
     }
 }
