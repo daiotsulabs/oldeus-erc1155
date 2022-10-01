@@ -14,6 +14,7 @@ describe("ERC721 Oldeus", function () {
     tree = generateMerkleTree([
       { address: owner.address, type: 1 },
       { address: add1.address, type: 2 },
+      { address: owner.address, type: 2 },
     ]);
 
     mkRoot = tree.getHexRoot();
@@ -65,7 +66,7 @@ describe("ERC721 Oldeus", function () {
       const uwu = Object.keys(balOfseeds)
         .map((key) => {
           const balance = parseInt(balOfseeds[key]);
-          console.log(balance);
+
           if (balance !== 0) return key;
         })
         .filter((item) => item !== undefined);
@@ -75,6 +76,10 @@ describe("ERC721 Oldeus", function () {
       console.log(await mainContract.balanceOf(owner.address));
 
       expect(await mainContract.balanceOf(owner.address)).to.be.equal(1);
+    });
+
+    it("should mint vampire nft", async () => {
+      //TODO
     });
 
     it("shouldn't allow burn from outside the contract", async () => {

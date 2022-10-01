@@ -10,15 +10,12 @@ pragma solidity ^0.8.7;
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Abstract1155Factory.sol";
 
-//TODO add team free mint functionality
-//TODO add wl3 ( vital + stone ) functionality
-//TODO change requires to custom error to improve gas efficiency and code readability
-
 contract Seeds1155 is Abstract1155Factory {
     address public multisigWallet;
     address public OLDEUS_721;
     bool public paused = false;
-    uint256[5] public nftsMaxSupply = [11, 500, 489, 300, 100];
+    // 0 -> baseSeed | 1 -> vampire seed | 2 -> elemental seed
+    uint256[5] public nftsMaxSupply = [500, 100, 100];
     uint256 price = 0.2 ether;
     uint256 wlprice = 0.1 ether;
     // phase 1 -> wl | 2 -> public | 3 -> claim serum
@@ -50,19 +47,20 @@ contract Seeds1155 is Abstract1155Factory {
         _name = _name;
         _symbol = _symbol;
         multisigWallet = _multisigWallet;
+        _setRoyalties(multisigWallet, 500);
     }
 
     //========================================================PUBLIC===========================================================
 
     /**
-     * @notice Donate eth and mint corresponding NFTs
+     * @notice buy normal seed without wl -> tokenId 0
      */
     function buySeed(uint256 amount) public payable notPaused {
         require(phase == 2, "Public sale not active");
 
         Claimed[msg.sender] += amount;
 
-        mint(getRandomNumber(), amount);
+        mint(0, amount);
     }
 
     /**
@@ -85,24 +83,24 @@ contract Seeds1155 is Abstract1155Factory {
 
         userWlMints[msg.sender] += amount;
 
-        mint(getRandomNumber(), amount);
+        mint(0, amount);
     }
 
     /**
      * @notice function to claim elemental stone or blood vital
      * @param proof hex proof to check address in wl
-     * @param _type type of wl to claim, must be 3
+     * @param _type type of wl to claim, must be 1 or 2
      */
     function receiveSpecialNft(bytes32[] calldata proof, uint256 _type)
         public
         payable
         isWhitelisted(proof, _type)
     {
-        require(_type == 3, "wl type must be 3");
+        require(phase == 3, "phase sould be 3");
         require(!specialClaimed[msg.sender]);
         specialClaimed[msg.sender] = true;
 
-        _mint(msg.sender, _type, 1, "");
+        mint(_type - 2, 1);
     }
 
     /**
@@ -144,28 +142,6 @@ contract Seeds1155 is Abstract1155Factory {
      */
     function changeMultisig(address newMultisig_) public onlyOwner {
         multisigWallet = newMultisig_;
-    }
-
-    function getRandomNumber() public view returns (uint256) {
-        uint256 randNum = uint256(
-            keccak256(abi.encodePacked(block.difficulty, block.timestamp))
-        ) % 3;
-
-        uint256 tries = 0;
-
-        while (totalSupply(randNum) >= nftsMaxSupply[randNum]) {
-            //console.log(randNum, "tries", tries);
-            if (tries == 2) revert("not nfts left to mint");
-            if (randNum < 2) {
-                randNum++;
-                tries++;
-            } else {
-                randNum = 0;
-                tries++;
-            }
-        }
-
-        return randNum;
     }
 
     //========================================================EXTERNAL=========================================================
@@ -241,7 +217,10 @@ contract Seeds1155 is Abstract1155Factory {
      */
     function mint(uint256 _tokenId, uint256 amount) internal {
         require(!paused, "contract is paused");
-        require(msg.value >= price * amount, "Invalid value sent");
+
+        if (_tokenId == 0)
+            require(msg.value >= price * amount, "Invalid value sent");
+
         require(
             totalSupply(_tokenId) + amount <= nftsMaxSupply[_tokenId],
             "Max supply has been reached"
