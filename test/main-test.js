@@ -134,7 +134,9 @@ describe("ERC1155-oldeus", function () {
     });
 
     it("shouldn't allow especial NFt twice", async () => {});
+  });
 
+  describe("Intefaces implementation", () => {
     it("Check contract implements eip2981", async () => {
       const value = await interfaceChecker.check2981(oldeus.address);
       assert(value === true);
