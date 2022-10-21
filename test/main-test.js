@@ -1,12 +1,15 @@
 const { expect, assert } = require("chai");
 const { ethers } = require("hardhat");
+const {
+  isCreateTrace,
+} = require("hardhat/internal/hardhat-network/stack-traces/message-trace");
 const { keccak256 } = ethers.utils;
 const generateMerkleTree = require("../merkle-tree");
 const { moveBlocks } = require("../utils/move-blocks");
 
 describe("ERC1155-oldeus", function () {
-  let contract;
-  let oldeus;
+  let contract, interfaceCheckerContract;
+  let oldeus, interfaceChecker;
   let owner, addr1, addr2, addrs;
   let tree, merkleRoot;
 
@@ -23,11 +26,17 @@ describe("ERC1155-oldeus", function () {
       { address: addr2.address, type: 1 },
       { address: owner.address, type: 3 },
       { address: owner.address, type: 4 },
+      { address: addr1.address, type: 4 },
     ]);
 
     merkleRoot = tree.getHexRoot();
 
     contract = await ethers.getContractFactory("Seeds1155");
+    interfaceCheckerContract = await ethers.getContractFactory(
+      "CheckInterface"
+    );
+
+    interfaceChecker = await interfaceCheckerContract.deploy();
 
     oldeus = await contract.deploy(
       NAME,
@@ -108,14 +117,14 @@ describe("ERC1155-oldeus", function () {
 
       const mkproof2 = tree.getHexProof(
         keccak256(
-          ethers.utils.solidityPack(["address", "uint256"], [owner.address, 4])
+          ethers.utils.solidityPack(["address", "uint256"], [addr1.address, 4])
         )
       );
 
       await oldeus.receiveSpecialNft(mkproof, 3);
-      await oldeus.receiveSpecialNft(mkproof2, 4);
-      const balOfvampire = (await oldeus.balanceOf(owner.address, 1)) || 1;
-      const balOfElemental = await oldeus.balanceOf(owner.address, 2);
+      await oldeus.connect(addr1).receiveSpecialNft(mkproof2, 4);
+      const balOfvampire = await oldeus.balanceOf(owner.address, 1);
+      const balOfElemental = await oldeus.balanceOf(addr1.address, 2);
 
       assert(balOfvampire.toString() == "1", "balance of tokenId 1 must be 1");
       assert(
@@ -124,8 +133,13 @@ describe("ERC1155-oldeus", function () {
       );
     });
 
-    it("shouldn't allow especial NFt twice", async () => {
-      
-    })
+    it("shouldn't allow especial NFt twice", async () => {});
+  });
+
+  describe("Intefaces implementation", () => {
+    it("Check contract implements eip2981", async () => {
+      const value = await interfaceChecker.check2981(oldeus.address);
+      assert(value === true);
+    });
   });
 });
