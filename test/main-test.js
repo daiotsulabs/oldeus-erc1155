@@ -26,6 +26,7 @@ describe("ERC1155-oldeus", function () {
       { address: addr2.address, type: 1 },
       { address: owner.address, type: 3 },
       { address: owner.address, type: 4 },
+      { address: addr1.address, type: 4 },
     ]);
 
     merkleRoot = tree.getHexRoot();
@@ -116,14 +117,14 @@ describe("ERC1155-oldeus", function () {
 
       const mkproof2 = tree.getHexProof(
         keccak256(
-          ethers.utils.solidityPack(["address", "uint256"], [owner.address, 4])
+          ethers.utils.solidityPack(["address", "uint256"], [addr1.address, 4])
         )
       );
 
       await oldeus.receiveSpecialNft(mkproof, 3);
-      await oldeus.receiveSpecialNft(mkproof2, 4);
-      const balOfvampire = (await oldeus.balanceOf(owner.address, 1)) || 1;
-      const balOfElemental = await oldeus.balanceOf(owner.address, 2);
+      await oldeus.connect(addr1).receiveSpecialNft(mkproof2, 4);
+      const balOfvampire = await oldeus.balanceOf(owner.address, 1);
+      const balOfElemental = await oldeus.balanceOf(addr1.address, 2);
 
       assert(balOfvampire.toString() == "1", "balance of tokenId 1 must be 1");
       assert(

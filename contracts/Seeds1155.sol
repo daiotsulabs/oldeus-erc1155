@@ -97,7 +97,7 @@ contract Seeds1155 is Abstract1155Factory {
         isWhitelisted(proof, _type)
     {
         require(phase == 3, "phase sould be 3");
-        require(!specialClaimed[msg.sender]);
+        require(!specialClaimed[msg.sender], "special mint already claimed");
         specialClaimed[msg.sender] = true;
 
         mint(_type - 2, 1);
