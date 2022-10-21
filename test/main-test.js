@@ -1,12 +1,15 @@
 const { expect, assert } = require("chai");
 const { ethers } = require("hardhat");
+const {
+  isCreateTrace,
+} = require("hardhat/internal/hardhat-network/stack-traces/message-trace");
 const { keccak256 } = ethers.utils;
 const generateMerkleTree = require("../merkle-tree");
 const { moveBlocks } = require("../utils/move-blocks");
 
 describe("ERC1155-oldeus", function () {
-  let contract;
-  let oldeus;
+  let contract, interfaceCheckerContract;
+  let oldeus, interfaceChecker;
   let owner, addr1, addr2, addrs;
   let tree, merkleRoot;
 
@@ -28,6 +31,11 @@ describe("ERC1155-oldeus", function () {
     merkleRoot = tree.getHexRoot();
 
     contract = await ethers.getContractFactory("Seeds1155");
+    interfaceCheckerContract = await ethers.getContractFactory(
+      "CheckInterface"
+    );
+
+    interfaceChecker = await interfaceCheckerContract.deploy();
 
     oldeus = await contract.deploy(
       NAME,
@@ -124,8 +132,11 @@ describe("ERC1155-oldeus", function () {
       );
     });
 
-    it("shouldn't allow especial NFt twice", async () => {
-      
-    })
+    it("shouldn't allow especial NFt twice", async () => {});
+
+    it("Check contract implements eip2981", async () => {
+      const value = await interfaceChecker.check2981(oldeus.address);
+      assert(value === true);
+    });
   });
 });
